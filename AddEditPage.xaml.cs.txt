@@ -1,0 +1,362 @@
+﻿using PetShop.Data;
+using System;
+using System.Collections.Generic;
+using System.Data.Entity.Validation;
+using System.IO;
+using System.Linq;
+using System.Reflection.Emit;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace PetShop.Pages
+{
+    /// <summary>
+    /// Логика взаимодействия для AddEditPage.xaml
+    /// </summary>
+    public partial class AddEditPage : Page
+    {
+        public string FlagAddorEdit = "default";
+        public Data.Product _currentproduct = new Data.Product();
+        public AddEditPage(Data.Product product)
+        {
+            InitializeComponent();
+
+            if (product != null )
+            {
+                _currentproduct = product;
+                FlagAddorEdit = "edit";
+            }
+            else
+            {
+                FlagAddorEdit = "add";
+            }
+            DataContext = _currentproduct;
+
+            Init();
+        }
+
+
+        public void Init()
+        {
+            try
+            {
+                CategoryComboBox.ItemsSource = Data.trade4Entities.GetContext().Category.ToList();
+                if(FlagAddorEdit == "add")
+                {
+                    IdTextBox.Visibility = Visibility.Visible;
+                    IdLabel.Visibility = Visibility.Hidden;
+                    
+                    ProductImage.Source = new BitmapImage(new Uri("C:\\Users\\Андрей\\Desktop\\git\\src\\PetShop\\PetShop\\Resources\\picture.png"));
+                    CategoryComboBox.SelectedItem = null;
+                    CountTextBox.Text = string.Empty;
+                    UnitTextBox.Text = string.Empty;
+                    NameTextBox.Text = string.Empty;
+                    CostTextBox.Text = string.Empty;
+                    SupplierTextBox.Text = string.Empty;
+                    DescriptionTextBox.Text = string.Empty;
+                    IdTextBox.Text = Data.trade4Entities.GetContext().Product.Max(d => d.Id + 1).ToString();
+                }
+                else if(FlagAddorEdit == "edit")
+                {
+                    IdTextBox.Visibility = Visibility.Visible;
+                    IdLabel.Visibility = Visibility.Hidden;
+                    ManufacturerTextBox.Text = _currentproduct.Manufacture?.Name;
+                    CategoryComboBox.SelectedItem = null;
+                    CountTextBox.Text = _currentproduct.ProductQuantityInStock.ToString();
+                    UnitTextBox.Text = _currentproduct.Units.NameOfUnit;
+                    NameTextBox.Text = _currentproduct.ProductName.Name;
+                    CostTextBox.Text = _currentproduct.ProductCost.ToString();
+                    SupplierTextBox.Text = _currentproduct.ProductName.Name;
+                    DescriptionTextBox.Text = _currentproduct.ProductDiscription;
+                    IdTextBox.Text = Data.trade4Entities.GetContext().Product.Max(d => d.Id + 1).ToString();
+                    CategoryComboBox.SelectedItem = Data.trade4Entities.GetContext().Category.Where(d => d.Id == _currentproduct.IdCategory).FirstOrDefault();
+                    if (_currentproduct.ProductPhote != null )
+                    {
+                        using (var ms = new System.IO.MemoryStream(_currentproduct.ProductPhote))
+                        {
+                            ProductImage.Source = BitmapFrame.Create(ms, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                        }  
+                    }
+                    else
+                    {
+                        ProductImage.Source = new BitmapImage(new Uri("C:\\Users\\Андрей\\Desktop\\git\\src\\PetShop\\PetShop\\Resources\\picture.png"));
+                    }
+                }
+            }
+            catch (Exception)
+            {
+
+            }
+        }
+        private byte[] ImageToByteArray(BitmapImage image)
+        {
+            byte[] data;
+            JpegBitmapEncoder encoder = new JpegBitmapEncoder(); // Можно также использовать PngBitmapEncoder
+            encoder.Frames.Add(BitmapFrame.Create(image));
+
+            using (MemoryStream ms = new MemoryStream())
+            {
+                encoder.Save(ms);
+                data = ms.ToArray();
+            }
+            return data;
+        }
+
+
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                StringBuilder errors = new StringBuilder();
+                if (string.IsNullOrEmpty(NameTextBox.Text))
+                {
+                    errors.AppendLine("Заполните наименование");
+                }
+                if (CategoryComboBox.SelectedItem == null)
+                {
+                    errors.AppendLine("Выберите категорию");
+                }
+                if (string.IsNullOrEmpty(CountTextBox.Text))
+                {
+                    errors.AppendLine("Заполните количество");
+                }
+                else
+                {
+                    var tryQuantity = Int32.TryParse(CountTextBox.Text, out var resultQuantity);
+                    if (!tryQuantity)
+                    {
+                        errors.AppendLine("Количество - целое число");
+                    }
+                }
+                if (string.IsNullOrEmpty(UnitTextBox.Text))
+                {
+                    errors.AppendLine("Заполните ед.измерения");
+                }
+                if (string.IsNullOrEmpty(SupplierTextBox.Text))
+                {
+                    errors.AppendLine("Заполните поставщика");
+                }
+                if (string.IsNullOrEmpty(CostTextBox.Text))
+                {
+                    errors.AppendLine("Заполните стоимость");
+                }
+                else
+                {
+                    var tryCost = Decimal.TryParse(CostTextBox.Text, out var resultCost);
+                    if (!tryCost)
+                    {
+                        errors.AppendLine("Стоимость - дробное число");
+                    }
+                    else
+                    {
+                        // Проверить к-во знаков после "," indexof
+                        int decimalSeparatorIndex = CostTextBox.Text.IndexOfAny(new char[] { ',', '.' });
+
+                        if (decimalSeparatorIndex != -1)
+                        {
+                            // Количество знаков после запятой/точки
+                            int decimalsCount = CostTextBox.Text.Length - decimalSeparatorIndex - 1;
+
+                            if (decimalsCount > 2)
+                            {
+                                errors.AppendLine("Допускается не более двух знаков после запятой.");
+                            }
+                        }
+                    }
+                    if (tryCost && resultCost < 0)
+                    {
+                        errors.AppendLine("Стоимость не может быть отрицательной");
+                    }
+                }
+                if (string.IsNullOrEmpty(DescriptionTextBox.Text))
+                {
+                    errors.AppendLine("Заполните описание");
+                }
+                //обработать фото: ограничение на размер фото: 300Х200 пикселей
+
+                if (errors.Length > 0)
+                {
+                    MessageBox.Show(errors.ToString(), "Ошибка!", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+                //Логика
+
+                var selectedCategory = CategoryComboBox.SelectedItem as Data.Category;
+                // Катогерия
+                _currentproduct.IdCategory = Data.trade4Entities.GetContext().Category.Where(d => d.Id == selectedCategory.Id).FirstOrDefault().Id;
+                // Количество
+                _currentproduct.ProductQuantityInStock = Convert.ToInt32(CountTextBox.Text);
+                // Цена
+                _currentproduct.ProductCost = Convert.ToDecimal(CostTextBox.Text);
+                // Описание
+                _currentproduct.ProductDiscription = DescriptionTextBox.Text;
+                _currentproduct.Article = "9";
+                // Картинка
+                if (ProductImage.Source is BitmapImage bitmapImage)
+                {
+                    _currentproduct.ProductPhote = ImageToByteArray(bitmapImage);
+                }
+
+                // Ед изм
+                var searchUnit = (from item in Data.trade4Entities.GetContext().Units
+                                  where item.NameOfUnit == UnitTextBox.Text
+                                  select item).FirstOrDefault();
+                if (searchUnit != null)
+                {
+                    _currentproduct.IdUnits = searchUnit.Id;
+                }
+                else
+                {
+                    Data.Units units = new Data.Units()
+                    {
+                        NameOfUnit = UnitTextBox.Text
+                    };
+                    Data.trade4Entities.GetContext().Units.Add(units);
+                    Data.trade4Entities.GetContext().SaveChanges();
+                    _currentproduct.IdUnits = units.Id;
+                }
+                if (string.IsNullOrEmpty(ManufacturerTextBox.Text))
+                {
+                    errors.AppendLine("Заполните производителя");
+                }
+
+                // Логика сохранения данных, если ошибок нет
+                if (errors.Length > 0)
+                {
+                    MessageBox.Show(errors.ToString(), "Ошибка!", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // Поиск или добавление производителя
+                var searchManufacturer = (from item in Data.trade4Entities.GetContext().Manufacture
+                                          where item.Name == ManufacturerTextBox.Text
+                                          select item).FirstOrDefault();
+
+                if (searchManufacturer != null)
+                {
+                    _currentproduct.IdManufacturer = searchManufacturer.Id;
+                }
+                else
+                {
+                    Data.Manufacture manufacturer = new Data.Manufacture()
+                    {
+                        Name = ManufacturerTextBox.Text
+                    };
+                    
+                    Data.trade4Entities.GetContext().Manufacture.Add(manufacturer);
+                    Data.trade4Entities.GetContext().SaveChanges();
+                    _currentproduct.IdManufacturer = manufacturer.Id;
+                }
+                // Поиск или добавление наименования продукта
+                var searchProductName = (from item in Data.trade4Entities.GetContext().ProductName
+                                         where item.Name == NameTextBox.Text
+                                         select item).FirstOrDefault();
+                if (searchProductName != null)
+                {
+                    _currentproduct.IdProductName = searchProductName.Id;
+                }
+                else
+                {
+                    Data.ProductName productName = new Data.ProductName()
+                    {
+                        Name = NameTextBox.Text
+                    };
+                    Data.trade4Entities.GetContext().ProductName.Add(productName);
+                    Data.trade4Entities.GetContext().SaveChanges();
+                    _currentproduct.IdProductName = productName.Id;
+                }
+
+
+                // Поиск или добавление поставщика
+                var searchSupplier = (from item in Data.trade4Entities.GetContext().Supplier
+                                      where item.Name == SupplierTextBox.Text
+                                      select item).FirstOrDefault();
+
+                if (searchSupplier != null)
+                {
+                    _currentproduct.IdSupplier = searchSupplier.Id;
+                }
+                else
+                {
+                    // Если поставщик с таким именем не найден, только тогда добавляем нового
+                    Data.Supplier supplier = new Data.Supplier()
+                    {
+                        Name = SupplierTextBox.Text
+                    };
+                    Data.trade4Entities.GetContext().Supplier.Add(supplier);
+                    Data.trade4Entities.GetContext().SaveChanges();
+                    _currentproduct.IdSupplier = supplier.Id;
+                }
+
+                if (FlagAddorEdit == "add")
+                {
+                    Data.trade4Entities.GetContext().Product.Add(_currentproduct);
+                        Data.trade4Entities.GetContext().SaveChanges();
+                    MessageBox.Show("Успешно добавлено", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+
+                else if (FlagAddorEdit == "edit")
+                {
+                    Data.trade4Entities.GetContext().SaveChanges();
+                    MessageBox.Show("Успешно добавлено", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+            }
+
+            
+            catch (DbEntityValidationException ex)
+            {
+                foreach (var validationErrors in ex.EntityValidationErrors)
+                {
+                    foreach (var validationError in validationErrors.ValidationErrors)
+                    {
+                        MessageBox.Show($"Свойство: {validationError.PropertyName}, Ошибка: {validationError.ErrorMessage}", "Ошибка валидации", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+
+
+
+
+        }
+
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            Manager.MainFrame.Navigate(new AdminLkAdmin());
+        }
+
+        private void ProductImage_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            Microsoft.Win32.OpenFileDialog openFileDialog = new Microsoft.Win32.OpenFileDialog();
+            openFileDialog.Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp";
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                // Загружаем выбранное изображение
+                BitmapImage bitmap = new BitmapImage(new Uri(openFileDialog.FileName));
+
+                // Проверяем размер изображения
+                if (bitmap.PixelWidth == 300 && bitmap.PixelHeight == 200)
+                {
+                    // Если размеры корректные, устанавливаем изображение
+                    ProductImage.Source = bitmap;
+                }
+                else
+                {
+                    // Если размеры некорректные, выводим сообщение
+                    MessageBox.Show("Изображение должно быть размером 300x200 пикселей.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+    }
+}
